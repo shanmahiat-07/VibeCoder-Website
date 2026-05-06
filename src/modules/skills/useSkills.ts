@@ -1,13 +1,11 @@
 import { useMemo } from 'react';
 
-import { skillsRegistry } from './skills.registry';
+import { skills } from './skills.generated';
 
 export const useSkills = () => {
-  const skills = useMemo(() => skillsRegistry, []);
-
   const categories = useMemo(() => {
-    return Array.from(new Set(skills.map((skill) => skill.category)));
-  }, [skills]);
+    return Array.from(new Set(skills.map((skill) => skill.category).filter(Boolean)));
+  }, []);
 
   return {
     skills,
@@ -15,4 +13,3 @@ export const useSkills = () => {
     totalSkills: skills.length,
   };
 };
-

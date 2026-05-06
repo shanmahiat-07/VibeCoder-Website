@@ -1,7 +1,7 @@
 import { ArrowRight, LayoutGrid, Link2, Layers3, MonitorPlay, Sparkles, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-import { useSkills } from '@/modules/skills/useSkills';
+import { SkillsSection } from '@/modules/skills/components/SkillsSection';
 
 const features = [
   {
@@ -39,8 +39,6 @@ const navLinks = [
 ];
 
 export const HomePage = () => {
-  const { skills } = useSkills();
-
   return (
     <main className="min-h-screen bg-slate-950 text-slate-50">
       <div className="relative overflow-hidden">
@@ -226,43 +224,7 @@ export const HomePage = () => {
             </div>
           </section>
 
-          <section id="skills" className="px-4 py-16 sm:px-6 lg:px-8">
-            <div className="mx-auto max-w-7xl">
-              <div className="max-w-2xl">
-                <p className="text-sm font-semibold uppercase tracking-[0.3em] text-cyan-200">
-                  Skills Section
-                </p>
-                <h2 className="mt-3 text-3xl font-semibold text-white sm:text-4xl">
-                  SELISE Blocks Skills available to the website layer.
-                </h2>
-                <p className="mt-4 text-base leading-7 text-slate-300">
-                  These skills are loaded locally from a frontend registry, so the SPA stays
-                  lightweight and does not depend on internal backend modules.
-                </p>
-              </div>
-
-              <div className="mt-10 grid gap-4 md:grid-cols-2">
-                {skills.map((skill) => (
-                  <article
-                    key={skill.id}
-                    className="group rounded-3xl border border-white/10 bg-slate-900/80 p-6 shadow-lg shadow-slate-950/20 transition duration-300 hover:-translate-y-1 hover:border-cyan-300/30 hover:bg-slate-900"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-200 ring-1 ring-cyan-300/20 transition group-hover:scale-105">
-                        <Sparkles className="size-5" />
-                      </div>
-                      <span className="shrink-0 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-medium text-cyan-100">
-                        {skill.category}
-                      </span>
-                    </div>
-
-                    <h3 className="mt-5 text-xl font-semibold text-white">{skill.name}</h3>
-                    <p className="mt-3 text-sm leading-7 text-slate-400">{skill.description}</p>
-                  </article>
-                ))}
-              </div>
-            </div>
-          </section>
+          <SkillsSection />
 
           <footer className="px-4 py-8 sm:px-6 lg:px-8">
             <div className="flex flex-col gap-4 border-t border-white/10 pt-6 md:flex-row md:items-center md:justify-between">

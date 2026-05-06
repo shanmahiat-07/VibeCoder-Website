@@ -2,6 +2,8 @@
 
 interface ImportMetaEnv {
   readonly VITE_API_BASE_URL: string;
+  readonly VITE_IAM_BASE_URL: string;
+  readonly VITE_OAUTH_REDIRECT_URI?: string;
   readonly VITE_X_BLOCKS_KEY: string;
   readonly VITE_CAPTCHA_SITE_KEY: string;
   readonly VITE_CAPTCHA_TYPE: string;

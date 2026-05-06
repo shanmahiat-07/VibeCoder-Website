@@ -1,22 +1,6 @@
-import type { SkillDefinition } from './skills.types';
+export const SELISE_BLOCKS_REPOSITORY = 'SELISEdigitalplatforms/blocks-skills';
+export const SELISE_BLOCKS_BRANCH = 'main';
+export const SELISE_BLOCKS_SKILLS_PATH = 'skills';
 
-export const skillsRegistry: SkillDefinition[] = [
-  {
-    id: 'blocks-idp',
-    name: 'blocks-idp',
-    description:
-      'Authentication, user management, MFA, RBAC, SSO/OIDC, session handling, and organization operations for SELISE Blocks.',
-    category: 'Identity & Access',
-    implementation: 'https://github.com/SELISEdigitalplatforms/blocks-skills/tree/main/skills/blocks-idp',
-  },
-  {
-    id: 'blocks-uilm',
-    name: 'blocks-uilm',
-    description:
-      'Languages, translation keys, AI-powered auto-translation, and UILM import/export for SELISE Blocks.',
-    category: 'Localization',
-    implementation:
-      'https://github.com/SELISEdigitalplatforms/blocks-skills/tree/main/skills/blocks-uilm',
-  },
-];
+export const SELISE_BLOCKS_PREDEFINED_SKILL_FOLDERS = ['blocks-idp', 'blocks-uilm'] as const;
 

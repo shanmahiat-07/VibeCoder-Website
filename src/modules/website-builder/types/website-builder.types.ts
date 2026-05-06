@@ -1,11 +1,14 @@
 export interface WebsiteSite {
   itemId: string;
+  userId: string;
   siteName: string;
   siteSlug: string;
   ownerUserId: string;
   status: string;
   themeJson: string;
   customDomain: string;
+  isPublished?: boolean;
+  publishedAt?: string;
   createdDate?: string;
   lastUpdatedDate?: string;
 }

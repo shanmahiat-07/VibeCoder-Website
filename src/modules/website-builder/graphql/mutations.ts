@@ -9,6 +9,16 @@ export const INSERT_WEBSITE_SITE_MUTATION = `
   }
 `;
 
+export const UPDATE_WEBSITE_SITE_MUTATION = `
+  mutation UpdateWebsiteSite($filter: String!, $input: WebsiteSiteUpdateInput!) {
+    updateWebsiteSite(filter: $filter, input: $input) {
+      itemId
+      totalImpactedData
+      acknowledged
+    }
+  }
+`;
+
 export const INSERT_WEBSITE_PAGE_MUTATION = `
   mutation InsertWebsitePage($input: WebsitePageInsertInput!) {
     insertWebsitePage(input: $input) {

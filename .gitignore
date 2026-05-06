@@ -20,7 +20,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Local env files
+# Environment files
+.env
+.env.*
+!.env.example
 .env.local
 
 # IDE - VSCode
