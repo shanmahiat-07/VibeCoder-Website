@@ -1,668 +1,465 @@
-import { useEffect, useMemo, useState } from 'react';
-import {
-  closestCenter,
-  DndContext,
-  DragEndEvent,
-  DragOverlay,
-  MouseSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import { arrayMove } from '@dnd-kit/sortable';
-import { useQueryClient } from '@tanstack/react-query';
-import {
-  AlertCircle,
-  Check,
-  CheckCircle2,
-  CloudOff,
-  Copy,
-  Globe2,
-  LoaderCircle,
-  Plus,
-  RefreshCw,
-} from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Button } from '@/components/ui-kit/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui-kit/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui-kit/dialog';
-import { Input } from '@/components/ui-kit/input';
-import { Label } from '@/components/ui-kit/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui-kit/tabs';
-import { useGlobalMutation } from '@/state/query-client/hooks';
-import { BuilderCanvas } from '../../components/builder-canvas/builder-canvas';
-import {
-  BuilderSidebar,
-  PaletteComponentType,
-} from '../../components/builder-sidebar/builder-sidebar';
-import { BuilderPropertiesPanel } from '../../components/builder-properties-panel/builder-properties-panel';
-import { DynamicLayoutRenderer } from '../../components/renderer/dynamic-layout-renderer';
-import { useBuilderSiteSync } from '../../hooks/use-builder-site-sync';
-import { createPage as createWebsitePage } from '../../services/website-builder.service';
-import { useWebsiteBuilderStore } from '../../store/website-builder.store';
-import type { BuilderComponentNode } from '../../types/builder-state.types';
-import type { PageListResponse, WebsitePage } from '../../types/website-builder.types';
+import { useMemo, useState } from 'react';
+import { ArrowRight, Image, PanelLeft, PanelRight, Plus, Square, Type } from 'lucide-react';
 
-const EMPTY_LAYOUT_JSON = JSON.stringify({ components: [] });
+type ComponentType = 'Text' | 'Button' | 'Image' | 'Container';
 
-const SAMPLE_PAGES = [
+type BuilderComponent = {
+  id: string;
+  type: ComponentType;
+  props: Record<string, string>;
+};
+
+const componentLibrary: Array<{
+  type: ComponentType;
+  icon: typeof Type;
+  title: string;
+  description: string;
+  initialProps: Record<string, string>;
+}> = [
   {
-    pageId: 'page-home',
-    siteId: 'site-demo',
-    pageName: 'Home',
-    pageSlug: 'home',
-    layoutJson: JSON.stringify({
-      components: [
-        {
-          id: 'hero-seed',
-          type: 'hero',
-          props: {
-            title: 'Build your website visually',
-            subtitle: 'Drag components into the canvas and edit them on the right.',
-            ctaText: 'Start building',
-          },
-        },
-      ],
-    }),
+    type: 'Text',
+    icon: Type,
+    title: 'Text',
+    description: 'Typography block for headlines or copy.',
+    initialProps: { content: 'New text block', size: '18', color: '#e2e8f0' },
   },
   {
-    pageId: 'page-about',
-    siteId: 'site-demo',
-    pageName: 'About',
-    pageSlug: 'about',
-    layoutJson: JSON.stringify({
-      components: [
-        {
-          id: 'text-seed',
-          type: 'text',
-          props: {
-            text: 'This page explains the story behind the site. Switch between pages to keep separate layouts in one builder state.',
-          },
-        },
-      ],
-    }),
+    type: 'Button',
+    icon: Square,
+    title: 'Button',
+    description: 'Action button for calls to action.',
+    initialProps: { label: 'Call to action', variant: 'primary' },
+  },
+  {
+    type: 'Image',
+    icon: Image,
+    title: 'Image',
+    description: 'Visual block with source and alt text.',
+    initialProps: { src: 'https://placehold.co/800x500', alt: 'Preview image' },
+  },
+  {
+    type: 'Container',
+    icon: PanelLeft,
+    title: 'Container',
+    description: 'A wrapper block to group content.',
+    initialProps: { title: 'Section container', background: '#0f172a' },
   },
 ];
 
-const createComponentTemplate = (type: PaletteComponentType): BuilderComponentNode => {
-  const id =
-    typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? crypto.randomUUID()
-      : `${type}-${Date.now()}`;
+const cloneComponent = (item: (typeof componentLibrary)[number]) => ({
+  id: `${item.type.toLowerCase()}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+  type: item.type,
+  props: { ...item.initialProps },
+});
 
-  if (type === 'hero') {
-    return {
-      id,
-      type,
-      props: {
-        title: 'New hero section',
-        subtitle: 'Describe the value of this section in one sentence.',
-        ctaText: 'Click here',
-      },
-      children: [],
-    };
-  }
-
-  if (type === 'image') {
-    return {
-      id,
-      type,
-      props: {
-        imageUrl: 'https://images.unsplash.com/photo-1497366754035-f200968a6e72',
-        alt: 'Freshly dropped image block',
-      },
-      children: [],
-    };
-  }
-
-  return {
-    id,
-    type,
-    props: {
-      text: 'Write your paragraph here.',
-    },
-    children: [],
-  };
-};
-
-type CreatePageVariables = {
-  siteId: string;
-  name: string;
-};
-
-const upsertPageListItem = (
-  previous: PageListResponse | undefined,
-  page: WebsitePage
-): PageListResponse => {
-  const previousItems = previous?.items ?? [];
-  const alreadyExists = previousItems.some((item) => item.itemId === page.itemId);
-  const nextItems = alreadyExists
-    ? previousItems.map((item) => (item.itemId === page.itemId ? page : item))
-    : [...previousItems, page];
-  const pageSize = previous?.pageSize ?? 50;
-  const totalCount = alreadyExists
-    ? (previous?.totalCount ?? nextItems.length)
-    : (previous?.totalCount ?? previousItems.length) + 1;
-
-  return {
-    items: nextItems,
-    totalCount,
-    pageNo: previous?.pageNo ?? 1,
-    pageSize,
-    totalPages: Math.max(previous?.totalPages ?? 1, Math.ceil(totalCount / pageSize)),
-    hasNextPage: previous?.hasNextPage ?? false,
-    hasPreviousPage: previous?.hasPreviousPage ?? false,
-  };
-};
-
-const copyTextToClipboard = async (value: string) => {
-  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(value);
-    return;
-  }
-
-  const textArea = document.createElement('textarea');
-  textArea.value = value;
-  textArea.setAttribute('readonly', '');
-  textArea.style.position = 'fixed';
-  textArea.style.left = '-9999px';
-  document.body.appendChild(textArea);
-  textArea.select();
-  const didCopy = document.execCommand('copy');
-  document.body.removeChild(textArea);
-
-  if (!didCopy) {
-    throw new Error('Clipboard copy failed');
+const describeComponent = (component: BuilderComponent) => {
+  switch (component.type) {
+    case 'Text':
+      return component.props.content || 'Text block';
+    case 'Button':
+      return component.props.label || 'Button';
+    case 'Image':
+      return component.props.alt || 'Image';
+    case 'Container':
+      return component.props.title || 'Container';
+    default:
+      return component.type;
   }
 };
 
 export const WebsiteBuilderPage = () => {
-  const { siteId: routeSiteId, pageId: routePageId } = useParams();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
-  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'error'>('idle');
-  const pagesById = useWebsiteBuilderStore((state) => state.pagesById);
-  const pageOrder = useWebsiteBuilderStore((state) => state.pageOrder);
-  const activePageId = useWebsiteBuilderStore((state) => state.activePageId);
-  const hydratePages = useWebsiteBuilderStore((state) => state.hydratePages);
-  const setActivePage = useWebsiteBuilderStore((state) => state.setActivePage);
-  const createBuilderPage = useWebsiteBuilderStore((state) => state.createPage);
-  const addComponent = useWebsiteBuilderStore((state) => state.addComponent);
-  const moveComponent = useWebsiteBuilderStore((state) => state.moveComponent);
-  const getPageJson = useWebsiteBuilderStore((state) => state.getPageJson);
-  const {
-    activePageSaveStatus,
-    hasBackendBinding,
-    isLoadingPages,
-    isPagesError,
-    pagesErrorMessage,
-    refetchPages,
-    retryActivePageSave,
-  } = useBuilderSiteSync({
-    siteId: routeSiteId,
-    pageId: routePageId,
-  });
+  const [selectedComponents, setSelectedComponents] = useState<BuilderComponent[]>([]);
+  const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
 
-  const sensors = useSensors(
-    useSensor(MouseSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    })
+  const selectedComponent = useMemo(
+    () => selectedComponents.find((component) => component.id === selectedComponentId) ?? null,
+    [selectedComponents, selectedComponentId],
   );
 
-  const createPageMutation = useGlobalMutation<WebsitePage, Error, CreatePageVariables>({
-    mutationFn: ({ siteId, name }) => createWebsitePage(siteId, name),
-    onSuccess: (createdPage) => {
-      queryClient.setQueryData<PageListResponse>(
-        ['website-builder-pages', createdPage.siteId],
-        (previous) => upsertPageListItem(previous, createdPage)
-      );
+  const addComponent = (type: BuilderComponent['type']) => {
+    const template = componentLibrary.find((item) => item.type === type);
 
-      createBuilderPage({
-        pageId: createdPage.itemId,
-        siteId: createdPage.siteId,
-        pageName: createdPage.pageName,
-        pageSlug: createdPage.pageSlug,
-        layoutJson: createdPage.layoutJson || EMPTY_LAYOUT_JSON,
-      });
-      setActivePage(createdPage.itemId);
-      navigate(`/website-builder/${createdPage.siteId}/${createdPage.itemId}`);
-    },
-  });
-
-  useEffect(() => {
-    if (!hasBackendBinding && pageOrder.length === 0) {
-      hydratePages(SAMPLE_PAGES);
-    }
-  }, [hasBackendBinding, hydratePages, pageOrder.length]);
-
-  useEffect(() => {
-    if (!hasBackendBinding || !routeSiteId || isLoadingPages) return;
-
-    if (routePageId && pagesById[routePageId]) {
-      if (activePageId !== routePageId) {
-        setActivePage(routePageId);
-      }
+    if (!template) {
       return;
     }
 
-    if (activePageId && routePageId !== activePageId) {
-      navigate(`/website-builder/${routeSiteId}/${activePageId}`, { replace: true });
-    }
-  }, [
-    activePageId,
-    hasBackendBinding,
-    isLoadingPages,
-    navigate,
-    pagesById,
-    routePageId,
-    routeSiteId,
-    setActivePage,
-  ]);
+    const nextComponent = cloneComponent(template);
 
-  const activePage = activePageId ? pagesById[activePageId] : null;
-  const publicPath = activePage ? `/site/${activePage.siteId}/${activePage.pageId}` : '';
-  const publicUrl = publicPath;
-
-  const activePageJson = useMemo(() => {
-    if (!activePageId) {
-      return JSON.stringify({ components: [] }, null, 2);
-    }
-
-    return JSON.stringify(JSON.parse(getPageJson(activePageId)), null, 2);
-  }, [activePageId, getPageJson]);
-
-  useEffect(() => {
-    if (isPublishDialogOpen) {
-      setCopyStatus('idle');
-    }
-  }, [isPublishDialogOpen, publicUrl]);
-
-  const handlePublish = () => {
-    if (!activePageId || !activePage) return;
-
-    if (activePage.isDirty) {
-      retryActivePageSave();
-    }
-
-    setIsPublishDialogOpen(true);
+    setSelectedComponents((current) => [...current, nextComponent]);
+    setSelectedComponentId(nextComponent.id);
   };
 
-  const handleCopyPublicUrl = async () => {
-    if (!publicUrl) return;
-
-    try {
-      await copyTextToClipboard(publicUrl);
-      setCopyStatus('copied');
-    } catch {
-      setCopyStatus('error');
-    }
-  };
-
-  const handleRetryPages = () => {
-    void refetchPages();
-  };
-
-  const handleAddPage = () => {
-    const nextIndex = pageOrder.length + 1;
-    const pageName = `Page ${nextIndex}`;
-
-    if (hasBackendBinding && routeSiteId) {
-      createPageMutation.mutate({
-        siteId: routeSiteId,
-        name: pageName,
-      });
+  const updateSelectedComponent = (patch: Record<string, string>) => {
+    if (!selectedComponent) {
       return;
     }
 
-    const pageId = `page-${Date.now()}`;
-
-    createBuilderPage({
-      pageId,
-      siteId: 'site-demo',
-      pageName,
-      pageSlug: `page-${nextIndex}`,
-      layoutJson: EMPTY_LAYOUT_JSON,
-    });
-    setActivePage(pageId);
+    setSelectedComponents((current) =>
+      current.map((component) =>
+        component.id === selectedComponent.id
+          ? { ...component, props: { ...component.props, ...patch } }
+          : component,
+      ),
+    );
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    if (!activePageId || !activePage) return;
-
-    const { active, over } = event;
-    if (!over) return;
-
-    const activeSource = active.data.current?.source;
-    const overId = String(over.id);
-
-    if (activeSource === 'palette') {
-      const componentType = active.data.current?.componentType as PaletteComponentType | undefined;
-      if (!componentType) return;
-
-      const component = createComponentTemplate(componentType);
-      const overIndex = activePage.layout.rootIds.findIndex((id) => id === overId);
-
-      addComponent(activePageId, component, {
-        index: overIndex >= 0 ? overIndex : activePage.layout.rootIds.length,
-      });
+  const removeSelectedComponent = () => {
+    if (!selectedComponent) {
       return;
     }
 
-    if (activeSource === 'canvas') {
-      const activeId = String(active.id);
-      const oldIndex = activePage.layout.rootIds.findIndex((id) => id === activeId);
-      const newIndex = activePage.layout.rootIds.findIndex((id) => id === overId);
-
-      if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) {
-        return;
-      }
-
-      const reorderedIds = arrayMove(activePage.layout.rootIds, oldIndex, newIndex);
-      const movedIndex = reorderedIds.findIndex((id) => id === activeId);
-
-      moveComponent(activePageId, activeId, {
-        targetIndex: movedIndex,
-      });
-    }
-  };
-
-  const saveIndicator = (() => {
-    if (!hasBackendBinding) {
-      return {
-        label: 'Demo mode',
-        icon: null,
-        className: 'text-muted-foreground',
-      };
-    }
-
-    if (isLoadingPages) {
-      return {
-        label: 'Loading pages...',
-        icon: <LoaderCircle className="size-4 animate-spin" />,
-        className: 'text-muted-foreground',
-      };
-    }
-
-    if (isPagesError) {
-      return {
-        label: 'Page load failed',
-        icon: <AlertCircle className="size-4" />,
-        className: 'text-destructive',
-      };
-    }
-
-    if (activePageSaveStatus === 'saving') {
-      return {
-        label: 'Saving...',
-        icon: <LoaderCircle className="size-4 animate-spin" />,
-        className: 'text-primary',
-      };
-    }
-
-    if (activePageSaveStatus === 'saved') {
-      return {
-        label: 'Saved',
-        icon: <CheckCircle2 className="size-4" />,
-        className: 'text-emerald-600',
-      };
-    }
-
-    if (activePageSaveStatus === 'error') {
-      return {
-        label: 'Save failed',
-        icon: <CloudOff className="size-4" />,
-        className: 'text-destructive',
-      };
-    }
-
-    return {
-      label: 'Ready',
-      icon: <CheckCircle2 className="size-4" />,
-      className: 'text-muted-foreground',
-    };
-  })();
-
-  const handlePageTabChange = (nextPageId: string) => {
-    setActivePage(nextPageId);
-
-    if (hasBackendBinding && routeSiteId) {
-      navigate(`/website-builder/${routeSiteId}/${nextPageId}`);
-    }
+    setSelectedComponents((current) =>
+      current.filter((component) => component.id !== selectedComponent.id),
+    );
+    setSelectedComponentId((current) => (current === selectedComponent.id ? null : current));
   };
 
   return (
-    <main
-      className="flex w-full flex-col gap-6 p-4 md:p-6"
-      role="main"
-      aria-label="Website Builder"
-    >
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Website Builder</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Drag components from the sidebar, reorder them on the canvas, and edit their props on
-            the right.
-          </p>
-          <div className={`mt-3 inline-flex items-center gap-2 text-sm ${saveIndicator.className}`}>
-            {saveIndicator.icon}
-            <span>{saveIndicator.label}</span>
-            {activePageSaveStatus === 'error' ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={retryActivePageSave}
-                className="h-7 px-2"
-              >
-                <RefreshCw className="size-3.5" />
-                Retry
-              </Button>
-            ) : null}
-          </div>
-        </div>
-        <div className="flex flex-col items-start gap-2 lg:items-end">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              onClick={handlePublish}
-              disabled={isLoadingPages || isPagesError || !activePageId || !activePage}
-            >
-              <Globe2 className="size-4" />
-              Publish
-            </Button>
-            <Button
-              onClick={handleAddPage}
-              disabled={isLoadingPages || isPagesError || createPageMutation.isPending}
-              loading={createPageMutation.isPending}
-            >
-              <Plus className="size-4" />
-              Add Page
-            </Button>
-          </div>
-          {createPageMutation.isError ? (
-            <p className="text-sm text-destructive" role="status">
-              Could not create the page. Try again.
-            </p>
-          ) : null}
-        </div>
-      </div>
-
-      {isLoadingPages ? (
-        <Card>
-          <CardContent className="flex min-h-[220px] items-center justify-center gap-3 text-sm text-muted-foreground">
-            <LoaderCircle className="size-4 animate-spin" />
-            Loading pages...
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {!isLoadingPages && isPagesError ? (
-        <Card>
-          <CardContent className="flex min-h-[220px] flex-col items-center justify-center gap-4 text-center">
-            <div className="rounded-full bg-destructive/10 p-3 text-destructive">
-              <AlertCircle className="size-5" />
-            </div>
-            <div className="space-y-1">
-              <h2 className="text-lg font-semibold text-foreground">Could not load pages</h2>
-              <p className="max-w-md text-sm text-muted-foreground">{pagesErrorMessage}</p>
-            </div>
-            <Button type="button" variant="outline" onClick={handleRetryPages}>
-              <RefreshCw className="size-4" />
-              Retry
-            </Button>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {!isLoadingPages && !isPagesError && pageOrder.length === 0 ? (
-        <Card>
-          <CardContent className="flex min-h-[220px] flex-col items-center justify-center gap-4 text-center">
-            <div className="space-y-1">
-              <h2 className="text-lg font-semibold text-foreground">No pages yet</h2>
-              <p className="max-w-md text-sm text-muted-foreground">
-                Create the first page to start building this site.
+    <main className="min-h-screen bg-slate-950 text-slate-50">
+      <div className="mx-auto flex min-h-screen w-full max-w-[1600px] flex-col">
+        <header className="border-b border-white/10 px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.32em] text-cyan-200">
+                Website Builder
+              </p>
+              <h1 className="mt-2 text-2xl font-semibold text-white">Visual page composer</h1>
+              <p className="mt-1 text-sm text-slate-400">
+                Add blocks, select them on the canvas, and edit their properties locally.
               </p>
             </div>
-            <Button
-              onClick={handleAddPage}
-              loading={createPageMutation.isPending}
-              disabled={createPageMutation.isPending}
-            >
-              <Plus className="size-4" />
-              Add Page
-            </Button>
-          </CardContent>
-        </Card>
-      ) : null}
 
-      {!isLoadingPages && !isPagesError && pageOrder.length > 0 ? (
-        <Tabs value={activePageId ?? undefined} onValueChange={handlePageTabChange}>
-          <TabsList>
-            {pageOrder.map((pageId) => (
-              <TabsTrigger key={pageId} value={pageId}>
-                {pagesById[pageId]?.pageName ?? pageId}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          {activePageId ? (
-            <TabsContent value={activePageId} className="mt-6">
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10"
               >
-                <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)_320px]">
-                  <div className="min-h-[720px]">
-                    <BuilderSidebar />
-                  </div>
-                  <div className="min-h-[720px]">
-                    <BuilderCanvas pageId={activePageId} />
-                  </div>
-                  <div className="space-y-6">
-                    <div className="min-h-[360px]">
-                      <BuilderPropertiesPanel pageId={activePageId} />
+                Edit mode
+                <PanelLeft className="size-4" />
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 rounded-full bg-cyan-300 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-200"
+              >
+                Preview page
+                <ArrowRight className="size-4" />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <section className="grid flex-1 gap-4 p-4 sm:p-6 xl:grid-cols-[280px_minmax(0,1fr)_360px] xl:p-8">
+          <aside className="rounded-3xl border border-white/10 bg-slate-900/80 p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">Components</h2>
+              <Plus className="size-4 text-slate-400" />
+            </div>
+
+            <div className="space-y-3">
+              {componentLibrary.map((item) => {
+                const Icon = item.icon;
+
+                return (
+                  <button
+                    key={item.type}
+                    type="button"
+                    onClick={() => addComponent(item.type)}
+                    className="flex w-full items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-left transition hover:-translate-y-0.5 hover:border-cyan-300/40 hover:bg-white/10"
+                  >
+                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-400/15 text-cyan-200 ring-1 ring-cyan-300/20">
+                      <Icon className="size-4" />
                     </div>
-                    <Card>
-                      <CardHeader className="border-b">
-                        <CardTitle>Live Preview</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="rounded-xl border bg-muted/10 p-4">
-                          <DynamicLayoutRenderer
-                            layout={pagesById[activePageId]?.layout}
-                            mode="preview"
-                            className="space-y-4"
-                          />
-                        </div>
-                      </CardContent>
-                    </Card>
-                    <Card>
-                      <CardHeader className="border-b">
-                        <CardTitle>Layout JSON</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <pre className="max-h-[320px] overflow-auto rounded-xl bg-slate-950 p-4 text-xs text-slate-100">
-                          {activePageJson}
-                        </pre>
-                      </CardContent>
-                    </Card>
+                    <div>
+                      <p className="font-medium text-white">{item.title}</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-400">{item.description}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+
+          <div className="rounded-3xl border border-dashed border-cyan-300/20 bg-slate-900/60 p-6">
+            <div className="flex h-full min-h-[640px] flex-col rounded-[1.5rem] border border-white/10 bg-slate-950 p-6">
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <div>
+                  <p className="text-sm font-medium text-white">Canvas</p>
+                  <p className="text-xs text-slate-400">
+                    Click a block to select it and edit the fields on the right
+                  </p>
+                </div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-2 text-xs text-slate-300">
+                  <Square className="size-3.5" />
+                  {selectedComponents.length} blocks
+                </div>
+              </div>
+
+              <div className="mt-6 flex-1 space-y-4 rounded-3xl border border-white/10 bg-slate-900/40 p-4">
+                {selectedComponents.length === 0 ? (
+                  <div className="flex h-full min-h-[500px] items-center justify-center rounded-[1.5rem] border border-dashed border-white/10 bg-white/[0.03] text-center">
+                    <div className="max-w-md px-6">
+                      <p className="text-lg font-semibold text-white">Canvas is empty</p>
+                      <p className="mt-2 text-sm leading-7 text-slate-400">
+                        Add blocks from the left panel to build a simple page structure.
+                      </p>
+                    </div>
                   </div>
+                ) : (
+                  selectedComponents.map((component) => {
+                    const isSelected = component.id === selectedComponentId;
+
+                    return (
+                      <button
+                        key={component.id}
+                        type="button"
+                        onClick={() => setSelectedComponentId(component.id)}
+                        className={[
+                          'w-full rounded-3xl border p-5 text-left transition',
+                          isSelected
+                            ? 'border-cyan-300/60 bg-cyan-300/10 shadow-lg shadow-cyan-950/20'
+                            : 'border-white/10 bg-white/[0.04] hover:border-white/20 hover:bg-white/[0.06]',
+                        ].join(' ')}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.24em] text-slate-300">
+                              {component.type}
+                            </div>
+                            <h3 className="mt-3 text-xl font-semibold text-white">
+                              {describeComponent(component)}
+                            </h3>
+                          </div>
+                          {isSelected ? (
+                            <span className="rounded-full bg-cyan-300/15 px-3 py-1 text-xs font-medium text-cyan-200">
+                              Selected
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                          {component.type === 'Text' ? (
+                            <p
+                              className="text-slate-200"
+                              style={{ fontSize: `${component.props.size || '18'}px`, color: component.props.color }}
+                            >
+                              {component.props.content}
+                            </p>
+                          ) : null}
+
+                          {component.type === 'Button' ? (
+                            <button
+                              type="button"
+                              className={[
+                                'rounded-full px-4 py-2 text-sm font-medium transition',
+                                component.props.variant === 'secondary'
+                                  ? 'border border-white/15 bg-white/5 text-white'
+                                  : 'bg-cyan-300 text-slate-950',
+                              ].join(' ')}
+                            >
+                              {component.props.label}
+                            </button>
+                          ) : null}
+
+                          {component.type === 'Image' ? (
+                            <div className="overflow-hidden rounded-2xl border border-white/10">
+                              <img
+                                src={component.props.src}
+                                alt={component.props.alt}
+                                className="h-48 w-full object-cover"
+                              />
+                            </div>
+                          ) : null}
+
+                          {component.type === 'Container' ? (
+                            <div
+                              className="rounded-2xl border border-white/10 p-4"
+                              style={{ backgroundColor: component.props.background }}
+                            >
+                              <p className="text-sm font-medium text-white">{component.props.title}</p>
+                              <p className="mt-2 text-sm leading-7 text-slate-300">
+                                A wrapper block for grouping sections and content.
+                              </p>
+                            </div>
+                          ) : null}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+
+          <aside className="rounded-3xl border border-white/10 bg-slate-900/80 p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">Properties</h2>
+              <PanelRight className="size-4 text-slate-400" />
+            </div>
+
+            {selectedComponent ? (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-xs uppercase tracking-[0.24em] text-cyan-200">Selected block</p>
+                  <p className="mt-2 text-lg font-semibold text-white">{selectedComponent.type}</p>
+                  <p className="mt-1 text-sm text-slate-400">Block ID: {selectedComponent.id}</p>
                 </div>
 
-                <DragOverlay>
-                  <div className="rounded-lg border border-primary/40 bg-card px-4 py-3 text-sm font-medium shadow-lg">
-                    Dragging component
+                {selectedComponent.type === 'Text' ? (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-sm text-slate-200" htmlFor="text-content">
+                        Content
+                      </label>
+                      <input
+                        id="text-content"
+                        value={selectedComponent.props.content || ''}
+                        onChange={(event) => updateSelectedComponent({ content: event.target.value })}
+                        className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/50"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <label className="text-sm text-slate-200" htmlFor="text-size">
+                          Size
+                        </label>
+                        <input
+                          id="text-size"
+                          type="number"
+                          value={selectedComponent.props.size || '18'}
+                          onChange={(event) => updateSelectedComponent({ size: event.target.value })}
+                          className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-cyan-300/50"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm text-slate-200" htmlFor="text-color">
+                          Color
+                        </label>
+                        <input
+                          id="text-color"
+                          value={selectedComponent.props.color || '#e2e8f0'}
+                          onChange={(event) => updateSelectedComponent({ color: event.target.value })}
+                          className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-cyan-300/50"
+                        />
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+
+                {selectedComponent.type === 'Button' ? (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-sm text-slate-200" htmlFor="button-label">
+                        Label
+                      </label>
+                      <input
+                        id="button-label"
+                        value={selectedComponent.props.label || ''}
+                        onChange={(event) => updateSelectedComponent({ label: event.target.value })}
+                        className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/50"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm text-slate-200" htmlFor="button-variant">
+                        Variant
+                      </label>
+                      <select
+                        id="button-variant"
+                        value={selectedComponent.props.variant || 'primary'}
+                        onChange={(event) => updateSelectedComponent({ variant: event.target.value })}
+                        className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-cyan-300/50"
+                      >
+                        <option value="primary">Primary</option>
+                        <option value="secondary">Secondary</option>
+                      </select>
+                    </div>
+                  </>
+                ) : null}
+
+                {selectedComponent.type === 'Image' ? (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-sm text-slate-200" htmlFor="image-src">
+                        Source URL
+                      </label>
+                      <input
+                        id="image-src"
+                        value={selectedComponent.props.src || ''}
+                        onChange={(event) => updateSelectedComponent({ src: event.target.value })}
+                        className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/50"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm text-slate-200" htmlFor="image-alt">
+                        Alt text
+                      </label>
+                      <input
+                        id="image-alt"
+                        value={selectedComponent.props.alt || ''}
+                        onChange={(event) => updateSelectedComponent({ alt: event.target.value })}
+                        className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/50"
+                      />
+                    </div>
+                  </>
+                ) : null}
+
+                {selectedComponent.type === 'Container' ? (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-sm text-slate-200" htmlFor="container-title">
+                        Title
+                      </label>
+                      <input
+                        id="container-title"
+                        value={selectedComponent.props.title || ''}
+                        onChange={(event) => updateSelectedComponent({ title: event.target.value })}
+                        className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/50"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm text-slate-200" htmlFor="container-background">
+                        Background
+                      </label>
+                      <input
+                        id="container-background"
+                        value={selectedComponent.props.background || '#0f172a'}
+                        onChange={(event) => updateSelectedComponent({ background: event.target.value })}
+                        className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-300/50"
+                      />
+                    </div>
+                  </>
+                ) : null}
+
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-sm font-medium text-white">Actions</p>
+                  <div className="mt-3 flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedComponentId(null)}
+                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
+                    >
+                      Clear selection
+                    </button>
+                    <button
+                      type="button"
+                      onClick={removeSelectedComponent}
+                      className="rounded-full bg-white px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-slate-200"
+                    >
+                      Remove block
+                    </button>
                   </div>
-                </DragOverlay>
-              </DndContext>
-            </TabsContent>
-          ) : null}
-        </Tabs>
-      ) : null}
-
-      <Dialog open={isPublishDialogOpen} onOpenChange={setIsPublishDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Publish Page</DialogTitle>
-            <DialogDescription>Public route for the active page.</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3">
-            <Label htmlFor="public-url">Public URL</Label>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input id="public-url" value={publicUrl} readOnly />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleCopyPublicUrl}
-                disabled={!publicUrl}
-                className="sm:w-[120px]"
-              >
-                {copyStatus === 'copied' ? (
-                  <Check className="size-4" />
-                ) : (
-                  <Copy className="size-4" />
-                )}
-                {copyStatus === 'copied' ? 'Copied' : 'Copy'}
-              </Button>
-            </div>
-            {copyStatus === 'error' ? (
-              <p className="text-sm text-destructive" role="status">
-                Copy failed. Select the URL and copy it manually.
-              </p>
-            ) : null}
-            {activePageSaveStatus === 'saving' ? (
-              <p className="text-sm text-muted-foreground" role="status">
-                Latest changes are still saving.
-              </p>
-            ) : null}
-          </div>
-
-          <DialogFooter>
-            {publicPath && activePageSaveStatus !== 'saving' ? (
-              <Button asChild variant="outline">
-                <a href={publicPath} target="_blank" rel="noreferrer">
-                  Open Public Page
-                </a>
-              </Button>
+                </div>
+              </div>
             ) : (
-              <Button variant="outline" disabled>
-                Open Public Page
-              </Button>
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <p className="text-sm font-medium text-white">No block selected</p>
+                <p className="mt-2 text-sm leading-6 text-slate-400">
+                  Add a block from the left panel, then click it on the canvas to edit its fields.
+                </p>
+              </div>
             )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </aside>
+        </section>
+      </div>
     </main>
   );
 };

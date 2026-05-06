@@ -190,8 +190,7 @@ const mapPageConnection = (connection: WebsitePageConnection): PageListResponse 
  * Fetches websites for the current user or a specific owner.
  *
  * Auth token handling is delegated to the shared graphqlClient, which attaches
- * the Blocks API key and the persisted bearer token, then retries once on 401
- * using the refresh-token flow already implemented in src/lib/https.ts.
+ * the configured API key and the persisted bearer token, then retries once on 401.
  */
 export const getSites = async (ownerUserId?: string): Promise<SiteListResponse> => {
   const where = ownerUserId ? { ownerUserId } : {};
@@ -233,8 +232,7 @@ export const getPage = async (siteId: string, pageId: string): Promise<WebsitePa
 };
 
 /**
- * Fetches all pages for a site so the builder can switch between them locally
- * while still saving each page independently to SELISE.
+ * Fetches all pages for a site so the builder can switch between them locally.
  */
 export const getPages = async (siteId: string): Promise<PageListResponse> => {
   const response = await graphqlClient.query<GetWebsitePagesResponse>({
@@ -338,7 +336,7 @@ export const savePage = async ({
 };
 
 /**
- * Creates a site record in SELISE Data Gateway.
+ * Creates a site record for the website builder backend.
  */
 export const createSite = async ({
   siteName,
