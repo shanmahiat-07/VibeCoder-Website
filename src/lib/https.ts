@@ -31,6 +31,7 @@ export class HttpError extends Error {
 
 const IAM_BASE_URL = import.meta.env.VITE_IAM_BASE_URL?.replace(/\/$/, '') ?? '';
 const projectKey = import.meta.env.VITE_X_BLOCKS_KEY ?? '';
+console.log('IAM project key:', projectKey);
 
 export const clients: Https = {
   async get<T>(url: string, headers: HeadersInit = {}): Promise<T> {
@@ -54,6 +55,13 @@ export const clients: Https = {
       const message = 'Missing required SELISE IAM configuration';
       console.error(message, {
         missingKey: 'VITE_IAM_BASE_URL',
+      });
+      throw new Error(message);
+    }
+    if (!projectKey) {
+      const message = 'Missing required SELISE IAM configuration';
+      console.error(message, {
+        missingKey: 'VITE_X_BLOCKS_KEY',
       });
       throw new Error(message);
     }
@@ -132,6 +140,7 @@ export const clients: Https = {
 
     if (skipAuth) {
       const nextHeaders = new Headers({
+        'x-blocks-key': projectKey,
         ...headerEntries,
       });
 
@@ -143,7 +152,7 @@ export const clients: Https = {
     }
 
     const nextHeaders = new Headers({
-      ...(projectKey && { 'x-blocks-key': projectKey }),
+      'x-blocks-key': projectKey,
       ...(token && { Authorization: `Bearer ${token}` }),
       ...headerEntries,
     });

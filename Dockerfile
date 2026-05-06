@@ -12,6 +12,8 @@ ARG ci_build
 
 RUN mkdir -p /app/log
 
+COPY .env.${ci_build} .env
+
 RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build:${ci_build}
 
 FROM nginx:stable-alpine

@@ -6,6 +6,7 @@ import { AuthCallbackPage } from '@/pages/AuthCallbackPage';
 import { WebsiteBuilderPage } from '@/modules/website-builder/pages/website-builder/website-builder';
 import { HomePage } from '@/pages/HomePage';
 import { LoginPage } from '@/pages/LoginPage';
+import { SignupPage } from '@/pages/SignupPage';
 import { RequireAuth } from '@/state/auth/RequireAuth';
 
 export const AppRoutes = () => {
@@ -13,6 +14,7 @@ export const AppRoutes = () => {
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/signup" element={<SignupPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route
         path="/website-builder"

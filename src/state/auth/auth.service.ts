@@ -9,6 +9,15 @@ export type LoginCredentials = {
   password: string;
 };
 
+export const register = async (email: string, password: string) => {
+  return clients.post(
+    '/iam/register',
+    JSON.stringify({ email, password }),
+    {},
+    true
+  );
+};
+
 export type OAuthCallbackParams = {
   code?: string;
   token?: string;
