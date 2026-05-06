@@ -12,7 +12,7 @@ ARG ci_build
 
 RUN mkdir -p /app/log
 
-COPY .env.${ci_build} .env
+RUN if [ -f ".env.${ci_build}" ]; then cp ".env.${ci_build}" .env; fi
 
 RUN NODE_OPTIONS="--max-old-space-size=4096" npm run build:${ci_build}
 
