@@ -73,7 +73,7 @@ export function LanguageProvider({
 
   /**
    * Extracts the base route from a pathname.
-   * E.g., '/dashboard/settings' -> '/dashboard'
+   * E.g., '/website-builder/site-id' -> '/website-builder'
    *
    * @param {string} pathname - The full pathname from the router
    * @returns {string} The base route path

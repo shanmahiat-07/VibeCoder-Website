@@ -26,25 +26,25 @@ export default defineConfig({
 
   // Build configuration
   build: {
-    outDir: 'build', // Keep same output directory as CRA
-    sourcemap: true,
-    chunkSizeWarningLimit: 700, // Increase limit since gzipped sizes are acceptable
-    // Optimize chunk splitting for better caching
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom'],
-          router: ['react-router-dom'],
-          query: ['@tanstack/react-query'],
-          ui: [
-            '@radix-ui/react-accordion',
-            '@radix-ui/react-alert-dialog',
-            '@radix-ui/react-avatar',
-          ],
-        },
+  outDir: 'dist',
+  emptyOutDir: true,
+  sourcemap: true,
+  chunkSizeWarningLimit: 700,
+  rollupOptions: {
+    output: {
+      manualChunks: {
+        vendor: ['react', 'react-dom'],
+        router: ['react-router-dom'],
+        query: ['@tanstack/react-query'],
+        ui: [
+          '@radix-ui/react-accordion',
+          '@radix-ui/react-alert-dialog',
+          '@radix-ui/react-avatar',
+        ],
       },
     },
   },
+},
 
   // Environment variables configuration
   // Vite automatically loads .env files and exposes variables prefixed with VITE_
