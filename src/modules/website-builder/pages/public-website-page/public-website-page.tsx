@@ -43,7 +43,7 @@ const mockPageBlocks: PageBlock[] = [
   },
 ];
 
-const renderBlock = (block: PageBlock, index: number) => {
+const renderBlock = (block: PageBlock) => {
   switch (block.type) {
     case 'hero':
       return (
@@ -137,7 +137,7 @@ export const PublicWebsitePage = () => {
         <section className="grid flex-1 gap-6 py-8 lg:grid-cols-[1fr_320px] lg:items-start">
           <article className="space-y-4">
             {mockPageBlocks.map((block, index) => (
-              <div key={`${block.type}-${index}`}>{renderBlock(block, index)}</div>
+              <div key={`${block.type}-${index}`}>{renderBlock(block)}</div>
             ))}
           </article>
 
